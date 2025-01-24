@@ -23,6 +23,7 @@
 #include "blob_gc.h"
 #include "compaction_filter.h"
 #include "db_iter.h"
+#include "unordered_iter.h"
 #include "table_factory.h"
 #include "titan_build_version.h"
 #include "titan_logging.h"
@@ -791,6 +792,31 @@ Iterator* TitanDBImpl::NewIteratorImpl(
   return new TitanDBIterator(options, storage.get(), snapshot, std::move(iter),
                              env_->GetSystemClock().get(), stats_.get(),
                              db_options_.info_log.get());
+}
+
+Iterator* TitanDBImpl::NewUnorderedIteratorImpl(const TitanReadOptions& options,
+                            ColumnFamilyHandle* handle,
+                            std::shared_ptr<ManagedSnapshot> snapshot,
+                            Slice* lowerbound=nullptr,
+                            Slice* upperbound=nullptr) {
+  auto cfd = reinterpret_cast<ColumnFamilyHandleImpl*>(handle)->cfd();
+
+  auto storage =
+      static_cast_with_check<TitanColumnFamilyHandle>(handle)->GetBlobStorage();
+
+  if (!storage) {
+    TITAN_LOG_ERROR(db_options_.info_log,
+                    "Column family id:%" PRIu32 " not Found.", handle->GetID());
+    return nullptr;
+  }
+
+  std::unique_ptr<ArenaWrappedDBIter> iter(db_impl_->NewIteratorImpl(
+      options, cfd, cfd->GetReferencedSuperVersion(db_impl_),
+      options.snapshot->GetSequenceNumber(), nullptr /*read_callback*/,
+      true /*expose_blob_index*/, true /*allow_refresh*/));
+  return new UnorderedIterator(options, storage.get(), snapshot, std::move(iter),
+                             env_->GetSystemClock().get(), stats_.get(),
+                             db_options_.info_log.get(),lowerbound,upperbound,cfd->user_comparator());
 }
 
 Status TitanDBImpl::NewIterators(

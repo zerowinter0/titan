@@ -2767,6 +2767,12 @@ class Benchmark {
         method = &Benchmark::ReadSequential;
         num_threads = 1;
         reads_ = num_;
+      } else if (name == "readunorder") {
+        method = &Benchmark::ReadSequentialUnorder;
+      } else if (name == "readunordertocache") {
+        method = &Benchmark::ReadSequentialUnorder;
+        num_threads = 1;
+        reads_ = num_;
       } else if (name == "readreverse") {
         method = &Benchmark::ReadReverse;
       } else if (name == "readrandom") {
@@ -4554,6 +4560,44 @@ class Benchmark {
   }
 
   void ReadSequential(ThreadState* thread, DB* db) {
+    ReadOptions options(FLAGS_verify_checksum, true);
+    options.tailing = FLAGS_use_tailing_iterator;
+
+    Iterator* iter = db->NewIterator(options);
+    int64_t i = 0;
+    int64_t bytes = 0;
+    for (iter->SeekToFirst(); i < reads_ && iter->Valid(); iter->Next()) {
+      bytes += iter->key().size() + iter->value().size();
+      thread->stats.FinishedOps(nullptr, db, 1, kRead);
+      ++i;
+
+      if (thread->shared->read_rate_limiter.get() != nullptr &&
+          i % 1024 == 1023) {
+        thread->shared->read_rate_limiter->Request(1024, Env::IO_HIGH,
+                                                   nullptr /* stats */,
+                                                   RateLimiter::OpType::kRead);
+      }
+    }
+
+    delete iter;
+    thread->stats.AddBytes(bytes);
+    if (FLAGS_perf_level > rocksdb::PerfLevel::kDisable) {
+      thread->stats.AddMessage(std::string("PERF_CONTEXT:\n") +
+                               get_perf_context()->ToString());
+    }
+  }
+
+  void ReadSequentialUnorder(ThreadState* thread) {
+    if (db_.db != nullptr) {
+      ReadSequentialUnorder(thread, db_.db);
+    } else {
+      for (const auto& db_with_cfh : multi_dbs_) {
+        ReadSequentialUnorder(thread, db_with_cfh.db);
+      }
+    }
+  }
+
+  void ReadSequentialUnorder(ThreadState* thread, DB* db) {
     ReadOptions options(FLAGS_verify_checksum, true);
     options.tailing = FLAGS_use_tailing_iterator;
 

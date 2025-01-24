@@ -25,6 +25,9 @@ if [ -z $TITAN ]; then
   TITAN="true"
 fi
 
+DB_DIR="/home/titan/build/test_db"
+WAL_DIR="/home/titan/build/test_wal"
+
 if [ -z $DB_DIR ]; then
   echo "DB_DIR is not defined"
   exit 0

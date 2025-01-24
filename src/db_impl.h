@@ -256,6 +256,12 @@ class TitanDBImpl : public TitanDB {
                             ColumnFamilyHandle* handle,
                             std::shared_ptr<ManagedSnapshot> snapshot);
 
+  Iterator* NewUnorderedIteratorImpl(const TitanReadOptions& options,
+                            ColumnFamilyHandle* handle,
+                            std::shared_ptr<ManagedSnapshot> snapshot,
+                            Slice* lowerbound,
+                            Slice* upperbound);
+
   Status AsyncInitializeGC(const std::vector<ColumnFamilyHandle*>& cf_handles);
 
   Status ExtractGCStatsFromTableProperty(
