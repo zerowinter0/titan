@@ -60,12 +60,15 @@ class BlobFilePrefetcher : public Cleanable {
 
   Status Get(const ReadOptions& options, const BlobHandle& handle,
              BlobRecord* record, OwnedSlice* buffer);
+  
+  void setConstPrefetchSize(uint64_t length);
 
  private:
   BlobFileReader* reader_;
   uint64_t last_offset_{0};
   uint64_t readahead_size_{0};
   uint64_t readahead_limit_{0};
+  uint64_t const_prefetch_size{0};
 };
 
 // Init uncompression dictionary

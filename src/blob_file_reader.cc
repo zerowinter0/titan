@@ -158,22 +158,30 @@ Status BlobFileReader::Get(const ReadOptions& _options,
   return s;
 }
 
+void BlobFilePrefetcher::setConstPrefetchSize(uint64_t length){
+  const_prefetch_size=length;
+  readahead_size_=const_prefetch_size;
+  IOOptions io_options;
+  io_options.rate_limiter_priority = Env::IOPriority::IO_HIGH;
+  reader_->file_->Prefetch(io_options, 0, length);
+}
+
 Status BlobFilePrefetcher::Get(const ReadOptions& options,
                                const BlobHandle& handle, BlobRecord* record,
                                OwnedSlice* buffer) {
   if (handle.offset == last_offset_) {
     last_offset_ = handle.offset + handle.size;
     if (handle.offset + handle.size > readahead_limit_) {
-      readahead_size_ = std::max(handle.size, readahead_size_);
+      if(!const_prefetch_size)readahead_size_ = std::max(handle.size, readahead_size_);
       IOOptions io_options;
       io_options.rate_limiter_priority = Env::IOPriority::IO_HIGH;
-      reader_->file_->Prefetch(io_options, handle.offset, readahead_size_);
+      if(!const_prefetch_size)reader_->file_->Prefetch(io_options, handle.offset, readahead_size_);
       readahead_limit_ = handle.offset + readahead_size_;
-      readahead_size_ = std::min(kMaxReadaheadSize, readahead_size_ * 2);
+      if(!const_prefetch_size)readahead_size_ = std::min(kMaxReadaheadSize, readahead_size_ * 2);
     }
   } else {
     last_offset_ = handle.offset + handle.size;
-    readahead_size_ = 0;
+    if(!const_prefetch_size)readahead_size_ = 0;
     readahead_limit_ = 0;
   }
 

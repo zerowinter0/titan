@@ -8,6 +8,7 @@
 
 #include <memory>
 #include <unordered_map>
+#include <iostream>
 
 #include "db/arena_wrapped_db_iter.h"
 #include "db/db_iter.h"
@@ -27,17 +28,14 @@ class UnorderedIterator : public Iterator {
   UnorderedIterator(const TitanReadOptions &options, BlobStorage *storage,
                   std::shared_ptr<ManagedSnapshot> snap,
                   std::unique_ptr<ArenaWrappedDBIter> iter, SystemClock *clock,
-                  TitanStats *stats, Logger *info_log,Slice* lowerbound,Slice * upperbound,const Comparator* cmp)
+                  TitanStats *stats, Logger *info_log)
       : options_(options),
         storage_(storage),
         snap_(snap),
         iter_(std::move(iter)),
         clock_(clock),
         stats_(stats),
-        info_log_(info_log),
-        lower_key_(lowerbound),
-        upper_key_(upperbound),
-        user_comparator_(cmp) {start();}
+        info_log_(info_log) {start();}
 
   ~UnorderedIterator() {
     RecordInHistogram(statistics(stats_), TITAN_ITER_TOUCH_BLOB_FILE_COUNT,
@@ -56,10 +54,7 @@ class UnorderedIterator : public Iterator {
   }
 
   void start(){
-    if(lower_key_){
-      iter_->Seek(*lower_key_);
-    }
-    else iter_->SeekToFirst();
+    iter_->SeekToFirst();
     first_one=true;
     Next();
   }
@@ -86,7 +81,7 @@ class UnorderedIterator : public Iterator {
       if(first_one)first_one=false;
       else iter_->Next();
       for(;
-        iter_->Valid()&&memory_usage<max_unorder_iter_memory_usage_&&!keyGEthanRequire();
+        iter_->Valid()&&memory_usage<max_unorder_iter_memory_usage_;
         memory_usage+=2*sizeof(uint64_t),iter_->Next()){
         Slice val=iter_->value();
 
@@ -166,17 +161,13 @@ class UnorderedIterator : public Iterator {
     return lhs.size < rhs.size;
   }
 
-  bool keyGEthanRequire(){
-    if(!iter_->Valid())return true;
-    else if(!upper_key_)return false;
-    else return(user_comparator_->Compare(iter_->key(),*upper_key_)>=0);
-  }
 
   //require: blob_map_iter has been switched to new blob
   Status switchToNewBlob(){
     std::sort(blob_map_iter->second.begin(), blob_map_iter->second.end(), CompareBlobHandles);
     //NewPrefetcher will free old prefetcher
     Status s=storage_->NewPrefetcher(blob_map_iter->first, &now_blob_prefetcher_);
+    now_blob_prefetcher_->setConstPrefetchSize(64<<20);
     if(s.ok()){
       touched_file_nums++;
       blob_iter=blob_map_iter->second.begin();
@@ -244,9 +235,6 @@ class UnorderedIterator : public Iterator {
   TitanStats *stats_;
   Logger *info_log_;
 
-  Slice* lower_key_;
-  Slice* upper_key_;
-  const Comparator* user_comparator_;
   std::unique_ptr<BlobFilePrefetcher> now_blob_prefetcher_=nullptr;
   uint64_t touched_file_nums=0;
   
